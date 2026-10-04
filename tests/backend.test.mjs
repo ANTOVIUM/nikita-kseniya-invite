@@ -1,0 +1,36 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,readdirSync} from 'node:fs';
+import worker from '../dist/server/index.js';
+
+const sqlite=new DatabaseSync(':memory:');
+for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())sqlite.exec(readFileSync('drizzle/'+f,'utf8'));
+const DB={prepare(sql){let values=[];const s=sqlite.prepare(sql);return {bind(...v){values=v;return this;},async first(){return s.get(...values)||null;},async all(){return {results:s.all(...values)};},async run(){return s.run(...values);}};}};
+const env={DB,ORGANIZER_KEY:'a-test-only-organizer-secret-long-enough'};
+const ctx={waitUntil(p){p.catch(()=>{});}};
+const auth={Authorization:'Bearer '+env.ORGANIZER_KEY};
+const payload={requestId:'test-request-0001',name:'Тестовый Гость',attendance:'yes',drinks:'Игристое, Крепкие напитки',food:'Без ограничений',lodging:'Да'};
+const post=(data,headers={})=>worker.fetch(new Request('https://invite.test/api/rsvp',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://invite.test',...headers},body:JSON.stringify(data)}),env,ctx);
+test('Saves yes, rejects invalid form, deduplicates and protects access',async()=>{
+  assert.equal((await post({...payload,name:''})).status,400);
+  assert.equal((await post({...payload,lodging:'Пока не уверен(а)'})).status,400);
+  assert.equal((await post({...payload,drinks:'Пока не знаю, Игристое'})).status,400);
+  assert.equal((await post({...payload,website:'spam'})).status,400);
+  assert.equal((await post(payload,{Origin:'https://foreign.test'})).status,403);
+  assert.deepEqual(await (await post(payload)).json(),{ok:true});
+  assert.deepEqual(await (await post(payload)).json(),{ok:true,duplicate:true});
+  assert.equal((await post({...payload,name:'Другой Гость'})).status,409);
+  const no={requestId:'test-request-0002',name:'Тестовый Отказ',attendance:'no'};
+  assert.equal((await post(no)).status,200);
+  assert.equal((await worker.fetch(new Request('https://invite.test/api/responses'),env,ctx)).status,401);
+  const rows=(await (await worker.fetch(new Request('https://invite.test/api/responses',{headers:auth}),env,ctx)).json()).rows;
+  assert.equal(rows.length,2);assert.equal(rows.find(r=>r.attendance==='no').lodging,'');
+  await post({...payload,requestId:'test-qa-request-0003'},{...auth,'X-Wedding-QA':'1'});
+  const visible=(await (await worker.fetch(new Request('https://invite.test/api/responses',{headers:auth}),env,ctx)).json()).rows;
+  assert.equal(visible.length,2);
+  const csv=await worker.fetch(new Request('https://invite.test/api/responses.csv',{headers:auth}),env,ctx);
+  assert.equal(csv.status,200);assert.match(await csv.text(),/Тестовый Гость/);
+  const missing=await worker.fetch(new Request('https://invite.test/api/rsvp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),{},ctx);
+  assert.equal(missing.status,503);
+});

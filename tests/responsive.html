@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><title>Проверка адаптивности</title>
+<style>body{margin:0;background:#ddd;font:14px Arial}header{padding:12px;position:sticky;top:0;background:white;z-index:1}select,button{font:inherit;padding:6px}iframe{display:block;margin:16px auto;border:0;background:white;width:390px;height:850px}output{font-size:12px;margin-left:14px}</style>
+<header><label>Ширина экрана <select id="width"><option>320</option><option>360</option><option>375</option><option selected>390</option><option>430</option><option>768</option><option>1024</option><option>1440</option></select></label> <button id="inspect">Проверить размеры</button> <button id="new-response">Новая анкета</button> <label>Этап конверта <select id="envelope-phase"><option value="normal">Обычный режим</option><option value="sealed">Закрыт</option><option value="unlatched">Открытый клапан</option><option value="lifting">Письмо вышло</option></select></label> <label><input type="checkbox" id="slow-transition">Медленный просмотр перехода</label> <label><input type="checkbox" id="fallback-transition">Без View Transitions</label><output id="result"></output></header>
+<output id="download-result" aria-live="polite"></output><iframe title="Приглашение" src="/"></iframe>
+<script>
+const frame=document.querySelector('iframe');
+document.querySelector('#new-response').addEventListener('click',()=>{frame.src='/?qa-response='+Date.now()+'#rsvp';});
+frame.addEventListener('load',()=>{
+ const w=frame.contentWindow,create=w.URL.createObjectURL.bind(w.URL);
+ w.URL.createObjectURL=blob=>{
+  if(blob.type==='image/png')blob.arrayBuffer().then(buffer=>{const view=new DataView(buffer);document.querySelector('#download-result').textContent=JSON.stringify({type:blob.type,bytes:blob.size,width:view.getUint32(16),height:view.getUint32(20)});});
+  else blob.text().then(text=>document.querySelector('#download-result').textContent=JSON.stringify({type:blob.type,bytes:blob.size,text}));
+  return create(blob);
+ };
+});
+document.querySelector('#width').addEventListener('change',e=>frame.style.width=e.target.value+'px');
+document.querySelector('#slow-transition').addEventListener('change',e=>{const d=frame.contentDocument;let style=d.querySelector('#qa-motion');if(!style){style=d.createElement('style');style.id='qa-motion';d.head.append(style);}style.textContent=e.target.checked?'::view-transition-group(invitation-sheet){animation-duration:5s!important}::view-transition-old(invitation-sheet){animation-duration:1.2s!important}::view-transition-new(invitation-sheet){animation-duration:1.5s!important;animation-delay:1.6s!important}::view-transition-old(root){animation-duration:1.8s!important}::view-transition-new(root){animation-duration:2s!important;animation-delay:1s!important}':'';});
+document.querySelector('#fallback-transition').addEventListener('change',e=>{const d=frame.contentDocument;d.startViewTransition=e.target.checked?undefined:Document.prototype.startViewTransition;});
+document.querySelector('#envelope-phase').addEventListener('change',e=>{
+ const d=frame.contentDocument,g=d.querySelector('#envelope-screen'),invite=d.querySelector('#invite-content');
+ if(e.target.value==='normal'){frame.src='/';return;}
+ g.querySelectorAll('.envelope-paper,.envelope-flap,.envelope-seal').forEach(el=>el.style.transition='none');
+ g.hidden=false;invite.hidden=true;d.body.classList.add('is-sealed');
+ g.classList.remove('is-opening','is-unlatched','is-lifting','is-exiting');
+ if(e.target.value!=='sealed')g.classList.add('is-opening','is-unlatched');
+ if(e.target.value==='lifting')g.classList.add('is-lifting');
+});
+document.querySelector('#inspect').addEventListener('click',()=>{
+ const d=frame.contentDocument,w=frame.contentWindow,img=d.querySelector('.hero-photo img'),rect=img.getBoundingClientRect();
+ document.querySelector('#result').textContent=JSON.stringify({width:w.innerWidth,scrollWidth:d.documentElement.scrollWidth,gateHidden:d.querySelector('#envelope-screen').hidden,inviteHidden:d.querySelector('#invite-content').hidden,focus:d.activeElement.id,portrait:rect.width?Math.round(rect.width/rect.height*1000)/1000:null,natural:Math.round(img.naturalWidth/img.naturalHeight*1000)/1000,croppedRepeat:d.querySelectorAll('.photo-pause').length});
+});
+</script></html>

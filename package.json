@@ -1,0 +1,16 @@
+{
+  "name": "nikita-kseniya-invite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/preview.mjs",
+    "check": "node --check dist/app.js && node --check dist/cinema.js && node --check worker/index.mjs",
+    "build": "node scripts/build-worker.mjs"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.5"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.5"
+  }
+}
