@@ -18,6 +18,12 @@ test('Saves yes, rejects invalid form, deduplicates and protects access',async()
   assert.equal((await post({...payload,drinks:'Пока не знаю, Игристое'})).status,400);
   assert.equal((await post({...payload,website:'spam'})).status,400);
   assert.equal((await post(payload,{Origin:'https://foreign.test'})).status,403);
+  const preflight=await worker.fetch(new Request('https://invite.test/api/rsvp',{method:'OPTIONS',headers:{Origin:'https://antovium.github.io'}}),env,ctx);
+  assert.equal(preflight.status,204);
+  assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'https://antovium.github.io');
+  const githubSave=await post({...payload,requestId:'github-pages-qa-request'},{Origin:'https://antovium.github.io',...auth,'X-Wedding-QA':'1'});
+  assert.equal(githubSave.status,200);
+  assert.equal(githubSave.headers.get('Access-Control-Allow-Origin'),'https://antovium.github.io');
   assert.deepEqual(await (await post(payload)).json(),{ok:true});
   assert.deepEqual(await (await post(payload)).json(),{ok:true,duplicate:true});
   assert.equal((await post({...payload,name:'Другой Гость'})).status,409);

@@ -33,8 +33,9 @@ export default {
     try{
       if(route==='/api/rsvp'){
         const incoming=request.headers.get('Origin');
-        if(incoming&&incoming!==url.origin&&incoming!=='null')return json({ok:false,error:'Откройте анкету на странице приглашения.'},403);
-        const cors=incoming==='null'?{'Access-Control-Allow-Origin':'null','Vary':'Origin'}:{};
+        const allowedExternal=incoming==='https://antovium.github.io'||incoming==='null';
+        if(incoming&&incoming!==url.origin&&!allowedExternal)return json({ok:false,error:'Откройте анкету на странице приглашения.'},403);
+        const cors=allowedExternal?{'Access-Control-Allow-Origin':incoming,'Vary':'Origin'}:{};
         if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...cors,'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Content-Type'}});
         if(request.method!=='POST')return json({ok:false,error:'Метод не поддерживается.'},405,{Allow:'POST',...cors});
         if(!env.DB)return json({ok:false,error:'Сервис ответов временно недоступен. Попробуйте позже.'},503,cors);
