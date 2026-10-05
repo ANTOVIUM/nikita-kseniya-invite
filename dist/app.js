@@ -129,7 +129,7 @@
       const timer=setTimeout(()=>fail('Не удалось дождаться подтверждения Google. Ответы сохранены на этом экране. Проверьте интернет и повторите отправку — дубликат не появится.'),45000);
       function onMessage(event) {
         const data=event.data;
-        if(!data || data.channel!=='wedding-rsvp' || data.nonce!==nonce || !/^https:\/\/([a-z0-9-]+\.)?script\.googleusercontent\.com$/.test(event.origin))return;
+        if(!data || data.channel!=='wedding-rsvp' || data.nonce!==nonce || !/^https:\/\/(?:[a-z0-9-]+-)?script\.googleusercontent\.com$/.test(event.origin))return;
         if(data.status==='ready'&&!submitted){
           remote=event.source;remoteOrigin=event.origin;submitted=true;
           remote.postMessage({channel:'wedding-rsvp-submit',nonce,payload},remoteOrigin);
