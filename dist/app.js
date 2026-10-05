@@ -114,10 +114,40 @@
   $('#rsvp-form').addEventListener('change',e=>{if(e.target.name==='drinks'){const list=[...document.querySelectorAll('input[name=drinks]:checked')];if(e.target.checked&&e.target.value==='Пока не знаю')list.forEach(i=>{if(i!==e.target)i.checked=false});else if(e.target.checked)document.querySelector('input[name=drinks][value="Пока не знаю"]').checked=false;}if(e.target.name==='food')$('#food-wrap').hidden=e.target.value!=='special';});
   $('#back').addEventListener('click',()=>{if(state.step===3&&state.attendance==='no')state.step=0;else state.step=Math.max(0,state.step-1);render(true)});
   $('#next').addEventListener('click',async()=>{if($('#next').disabled)return;const error=readStep();if(error){$('#form-error').textContent=error;$('#form-error').hidden=false;return;}if(state.step===3){await send();return;}if(state.step===0&&state.attendance==='no')state.step=3;else state.step++;render(true);});
+  // Google-hosted bridge uses google.script.run; personal data never enters a URL.
+  const googleRsvpUrl='https://script.google.com/macros/s/AKfycbwPK4c4ahE6OlhvsKqg3UqEwWhIQdTDPOFbt9f-_x4iMMU12xNTC6FweChr1E_c0I2C/exec';
+  function sendToGoogle(payload) {
+    return new Promise((resolve,reject)=>{
+      const nonce=crypto.randomUUID?.() || String(Date.now())+'-'+String(Math.random()).slice(2);
+      const frame=document.createElement('iframe');
+      frame.title='Сохранение ответа';frame.setAttribute('aria-hidden','true');frame.tabIndex=-1;
+      frame.style.cssText='position:fixed;width:1px;height:1px;left:-100px;top:-100px;border:0;pointer-events:none';
+      frame.referrerPolicy='no-referrer';
+      let remote=null,remoteOrigin='',submitted=false;
+      const cleanup=()=>{clearTimeout(timer);window.removeEventListener('message',onMessage);frame.remove();};
+      const fail=message=>{cleanup();reject(new Error(message));};
+      const timer=setTimeout(()=>fail('Не удалось дождаться подтверждения Google. Ответы сохранены на этом экране. Проверьте интернет и повторите отправку — дубликат не появится.'),45000);
+      function onMessage(event) {
+        const data=event.data;
+        if(!data || data.channel!=='wedding-rsvp' || data.nonce!==nonce || !/^https:\/\/([a-z0-9-]+\.)?script\.googleusercontent\.com$/.test(event.origin))return;
+        if(data.status==='ready'&&!submitted){
+          remote=event.source;remoteOrigin=event.origin;submitted=true;
+          remote.postMessage({channel:'wedding-rsvp-submit',nonce,payload},remoteOrigin);
+        } else if(submitted&&event.source===remote&&event.origin===remoteOrigin) {
+          if(data.status==='saved'&&data.result?.ok===true){cleanup();resolve(data.result);}
+          else if(data.status==='error')fail(data.error||'Не удалось сохранить ответ. Повторите отправку.');
+        }
+      }
+      window.addEventListener('message',onMessage);
+      frame.src=googleRsvpUrl+'?nonce='+encodeURIComponent(nonce);
+      document.body.append(frame);
+    });
+  }
   async function send(){const button=$('#next');button.disabled=true;$('#back').disabled=true;button.textContent='Отправляем…';$('#form-error').hidden=true;const payload={requestId:state.requestId,name:state.name,attendance:state.attendance,drinks:state.attendance==='yes'?state.drinks.join(', '):'',food:state.attendance==='yes'?(state.food==='special'?state.foodDetails:'Без ограничений'):'',lodging:state.attendance==='yes'?state.lodging:'',website:$('#rsvp-form').elements.website.value};
     try { if(typeof google!=='undefined' && google.script?.run){await new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).saveRsvp(payload));}
+      else if(location.origin==='https://antovium.github.io'){await sendToGoogle(payload);}
       else {const external=location.protocol==='file:'||location.origin==='https://antovium.github.io';const endpoint=window.RSVP_ENDPOINT||(external?'https://nikita-kseniya-24072027.alyshagf.chatgpt.site/api/rsvp':'/api/rsvp');const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});const result=await response.json();if(!response.ok||!result.ok)throw Error(result.error||'Не удалось сохранить ответ.');}state.step=4;render(true);
-    }catch(e){$('#form-error').textContent=e.name==='TimeoutError'?'Не удалось дождаться подтверждения. Повторите отправку: второй ответ не появится.':e.message||'Не удалось отправить ответ. Проверьте соединение и повторите попытку.';$('#form-error').hidden=false;button.disabled=false;button.textContent='Повторить отправку';}finally{$('#back').disabled=false;}
+    }catch(e){$('#form-error').textContent=e.name==='TimeoutError'?'Не удалось дождаться подтверждения. Повторите отправку: второй ответ не появится.':e instanceof TypeError?'Не удалось связаться с сервисом. Ответы остались на этом экране. Проверьте интернет и повторите отправку.':e.message||'Не удалось отправить ответ. Проверьте соединение и повторите попытку.';$('#form-error').hidden=false;button.disabled=false;button.textContent='Повторить отправку';}finally{$('#back').disabled=false;}
   }
   render();
   // Progressive enhancement: without JavaScript the invitation remains readable.
